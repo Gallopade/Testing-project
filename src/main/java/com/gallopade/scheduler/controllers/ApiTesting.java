@@ -16,10 +16,7 @@ import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.IOException;
-import java.io.Reader;
+import java.io.*;
 import java.net.URI;
 import java.net.URL;
 import java.security.KeyManagementException;
@@ -33,9 +30,8 @@ import java.util.stream.IntStream;
 @Service
 class ApiTesting {
     private Gson gson = new Gson();
-    private String baseUrl = "https://go.gallopade.com/";
-    private String csvFile = "/Users/gallopade/Documents/Gallopade/LMS-Scheduler/report.scheduler/src/main/resources/student-account.csv";
-
+    private String baseUrl = "https://staging.gallopade.com/";
+    private String csvFile = "student-account.csv";
     private void disableCertificateValidation() throws NoSuchAlgorithmException, KeyManagementException {
         TrustManager[] trustAllCerts = new TrustManager[]{
                 new X509TrustManager() {
@@ -107,15 +103,26 @@ class ApiTesting {
                 .forEach(s -> System.out.println(gson.fromJson(s, HashMap.class).get("message")));
     }
 
-    public List<String> createUserTokens() throws NoSuchAlgorithmException, KeyManagementException, FileNotFoundException {
+    public List<String> createUserTokens() throws NoSuchAlgorithmException, KeyManagementException {
         disableCertificateValidation();
-        try (Reader reader = new FileReader(csvFile); CSVParser csvParser = new CSVParser(reader, CSVFormat.DEFAULT.withFirstRecordAsHeader().withIgnoreHeaderCase().withTrim())) {
+
+        try (Reader reader = new InputStreamReader(
+                getClass().getClassLoader().getResourceAsStream(csvFile)
+        )) {
+
+            if (reader == null) {
+                throw new FileNotFoundException("student-account.csv not found in resources");
+            }
+
+            CSVParser csvParser = new CSVParser(reader, CSVFormat.DEFAULT.withFirstRecordAsHeader().withIgnoreHeaderCase().withTrim());
+
             return csvParser.getRecords().stream().parallel()
                     .map(this::createUserRequest)
                     .map(e -> this.sendRequest(baseUrl + "oauth20-service/oauth/token", e, HttpMethod.POST))
                     .filter(e -> !e.isEmpty())
                     .map(s -> gson.fromJson(s, HashMap.class).get("access_token").toString())
                     .toList();
+
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
