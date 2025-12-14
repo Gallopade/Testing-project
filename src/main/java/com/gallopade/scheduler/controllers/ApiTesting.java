@@ -182,7 +182,7 @@ class ApiTesting {
     }
 
     public void sendRequests(List<TokenWithAssignment> tokenWithAssignments) {
-        int requestsPerStudent = 1; // Send 2000 requests per student
+        int requestsPerStudent = 21; // Send 2000 requests per student
         int totalQuestions = 21;
         int totalStudents = tokenWithAssignments.size();
         int totalRequests = requestsPerStudent * totalStudents;
