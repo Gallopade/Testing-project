@@ -100,6 +100,11 @@ class ApiTesting {
         return new HttpEntity<>(Payloads.getSaveStudentAnswer(studentClassAssignmentId, questionNumber), headers);
     }
     
+    private HttpEntity<?> saveStudentClassAssignment(String token, String studentClassAssignmentId, String questionNumber, String classId, String classAssignmentId) {
+        HttpHeaders headers = setHeaders("Bearer " + token, "application/json", "application/json");
+        return new HttpEntity<>(Payloads.getSaveStudentAnswer(studentClassAssignmentId, questionNumber, classId, classAssignmentId), headers);
+    }
+    
     // Overloaded method for backward compatibility
     private HttpEntity<?> saveStudentClassAssignment(String token, String studentClassAssignmentId) {
         return saveStudentClassAssignment(token, studentClassAssignmentId, null);
@@ -120,6 +125,149 @@ class ApiTesting {
         HttpEntity<?> entity = new HttpEntity<>(headers);
         
         return sendRequest(url, entity, HttpMethod.GET);
+    }
+
+    /**
+     * Fetches student due assignments for a given token
+     * @param token Bearer token for authentication
+     * @param searchString Search string to filter assignments (e.g., "MULTIPLE_USER_VERIFICATION")
+     * @return The assignment response as a String
+     */
+    private String getStudentDueAssignment(String token, String searchString) {
+        String url = baseUrl + "gradebook-query-dashboard-service/api/v2/getStudentDueAssignment" +
+                     "?shouldQuery=true&searchString=" + searchString;
+        
+        HttpHeaders headers = setHeaders("Bearer " + token, "application/json", "*/*");
+        HttpEntity<?> entity = new HttpEntity<>(headers);
+        
+        String response = sendRequest(url, entity, HttpMethod.GET);
+        
+        // Print the full response
+        System.out.println("========================================");
+        System.out.println("[ASSIGNMENT RESPONSE] getStudentDueAssignment Response:");
+        System.out.println("URL: " + url);
+        System.out.println("Search String: " + searchString);
+        System.out.println("Response:");
+        if (response != null && !response.isEmpty()) {
+            System.out.println(response);
+        } else {
+            System.out.println("(Empty or null response)");
+        }
+        System.out.println("========================================");
+        
+        return response;
+    }
+
+    /**
+     * Extracts assignment details from the getStudentDueAssignment response
+     * @param response The JSON response from getStudentDueAssignment
+     * @return Map containing classAssignmentId, studentClassAssignmentId, and classId, or null if not found
+     */
+    private Map<String, String> extractAssignmentDetails(String response) {
+        if (response == null || response.isEmpty()) {
+            System.out.println("[ASSIGNMENT] Empty response received");
+            return null;
+        }
+        
+        try {
+            System.out.println("[ASSIGNMENT] Parsing response...");
+            Map<String, Object> jsonResponse = gson.fromJson(response, Map.class);
+            
+            // Print the parsed JSON structure for debugging
+            System.out.println("[ASSIGNMENT] Response keys: " + jsonResponse.keySet());
+            
+            Object studentDueAssignmentDTO = jsonResponse.get("studentDueAssignmentDTO");
+            
+            if (studentDueAssignmentDTO == null) {
+                System.out.println("[ASSIGNMENT] studentDueAssignmentDTO not found in response");
+                System.out.println("[ASSIGNMENT] Available keys in response: " + jsonResponse.keySet());
+                return null;
+            }
+            
+            // Handle array response
+            if (studentDueAssignmentDTO instanceof List) {
+                List<?> assignments = (List<?>) studentDueAssignmentDTO;
+                System.out.println("[ASSIGNMENT] Found " + assignments.size() + " assignment(s) in response");
+                
+                if (assignments.isEmpty()) {
+                    System.out.println("[ASSIGNMENT] No assignments found in response");
+                    return null;
+                }
+                
+                // Print all assignments for debugging
+                for (int i = 0; i < assignments.size(); i++) {
+                    Object assignment = assignments.get(i);
+                    if (assignment instanceof Map) {
+                        Map<String, Object> assignmentMap = (Map<String, Object>) assignment;
+                        System.out.println("[ASSIGNMENT] Assignment #" + (i + 1) + ":");
+                        System.out.println("  - title: " + assignmentMap.get("title"));
+                        System.out.println("  - classAssignmentId: " + assignmentMap.get("classAssignmentId"));
+                        System.out.println("  - studentClassAssignmentId: " + assignmentMap.get("studentClassAssignmentId"));
+                        System.out.println("  - classId: " + assignmentMap.get("classId"));
+                    }
+                }
+                
+                // Get first assignment that matches MULTIPLE_USER_VERIFICATION
+                for (Object assignment : assignments) {
+                    if (assignment instanceof Map) {
+                        Map<String, Object> assignmentMap = (Map<String, Object>) assignment;
+                        String title = (String) assignmentMap.get("title");
+                        
+                        // Check if this is the MULTIPLE_USER_VERIFICATION assignment
+                        if (title != null && title.contains("MULTIPLE_USER_VERIFICATION")) {
+                            String classAssignmentId = (String) assignmentMap.get("classAssignmentId");
+                            String studentClassAssignmentId = (String) assignmentMap.get("studentClassAssignmentId");
+                            String classId = (String) assignmentMap.get("classId");
+                            
+                            if (classAssignmentId != null && studentClassAssignmentId != null && classId != null) {
+                                Map<String, String> details = new HashMap<>();
+                                details.put("classAssignmentId", classAssignmentId);
+                                details.put("studentClassAssignmentId", studentClassAssignmentId);
+                                details.put("classId", classId);
+                                
+                                System.out.println("[ASSIGNMENT] ✓ Found MULTIPLE_USER_VERIFICATION assignment:");
+                                System.out.println("  - classAssignmentId: " + classAssignmentId);
+                                System.out.println("  - studentClassAssignmentId: " + studentClassAssignmentId);
+                                System.out.println("  - classId: " + classId);
+                                return details;
+                            }
+                        }
+                    }
+                }
+                
+                // If no matching assignment found, use the first one
+                System.out.println("[ASSIGNMENT] No MULTIPLE_USER_VERIFICATION assignment found, using first assignment");
+                Object firstAssignment = assignments.get(0);
+                if (firstAssignment instanceof Map) {
+                    Map<String, Object> assignmentMap = (Map<String, Object>) firstAssignment;
+                    String classAssignmentId = (String) assignmentMap.get("classAssignmentId");
+                    String studentClassAssignmentId = (String) assignmentMap.get("studentClassAssignmentId");
+                    String classId = (String) assignmentMap.get("classId");
+                    
+                    if (classAssignmentId != null && studentClassAssignmentId != null && classId != null) {
+                        Map<String, String> details = new HashMap<>();
+                        details.put("classAssignmentId", classAssignmentId);
+                        details.put("studentClassAssignmentId", studentClassAssignmentId);
+                        details.put("classId", classId);
+                        
+                        System.out.println("[ASSIGNMENT] ✓ Using first assignment:");
+                        System.out.println("  - classAssignmentId: " + classAssignmentId);
+                        System.out.println("  - studentClassAssignmentId: " + studentClassAssignmentId);
+                        System.out.println("  - classId: " + classId);
+                        return details;
+                    }
+                }
+            } else {
+                System.out.println("[ASSIGNMENT] studentDueAssignmentDTO is not a List, type: " + studentDueAssignmentDTO.getClass().getName());
+            }
+            
+            System.out.println("[ASSIGNMENT] Could not parse assignment details from response");
+            return null;
+        } catch (Exception e) {
+            System.out.println("[ASSIGNMENT] Error parsing assignment response: " + e.getMessage());
+            e.printStackTrace();
+            return null;
+        }
     }
     
     /**
@@ -213,7 +361,13 @@ class ApiTesting {
                                 String questionNumberStr = String.valueOf(questionNumber);
                                 String url = baseUrl + "gradebook-command-service/api/v1/saveStudentClassAssignmentAnswer";
                                 
-                                HttpEntity<?> entity = this.saveStudentClassAssignment(ta.getToken(), ta.getStudentClassAssignmentId(), questionNumberStr);
+                                // Use classId and classAssignmentId from API response if available
+                                HttpEntity<?> entity;
+                                if (ta.getClassId() != null && ta.getClassAssignmentId() != null) {
+                                    entity = this.saveStudentClassAssignment(ta.getToken(), ta.getStudentClassAssignmentId(), questionNumberStr, ta.getClassId(), ta.getClassAssignmentId());
+                                } else {
+                                    entity = this.saveStudentClassAssignment(ta.getToken(), ta.getStudentClassAssignmentId(), questionNumberStr);
+                                }
                                 
                                 // Send request immediately without any delays
                                 String response = this.sendRequest(url, entity, HttpMethod.POST);
@@ -271,13 +425,62 @@ class ApiTesting {
 
             return csvParser.getRecords().stream().parallel()
                     .map(record -> {
-                        String studentClassAssignmentId = record.get("studentClassAssignmentId");
+                        // Check if studentClassAssignmentId exists in CSV file
+                        String csvStudentClassAssignmentId = null;
+                        try {
+                            csvStudentClassAssignmentId = record.get("studentClassAssignmentId");
+                            if (csvStudentClassAssignmentId != null && !csvStudentClassAssignmentId.trim().isEmpty()) {
+                                System.out.println("[CSV] Found studentClassAssignmentId in CSV: " + csvStudentClassAssignmentId);
+                            }
+                        } catch (Exception e) {
+                            // Column doesn't exist or is empty
+                            System.out.println("[CSV] studentClassAssignmentId not found in CSV file");
+                        }
+                        
                         HttpEntity<?> request = createUserRequest(record);
                         String response = sendRequest(baseUrl + "oauth20-service/oauth/token", request, HttpMethod.POST);
                         if (response != null && !response.isEmpty()) {
                             try {
                                 String token = gson.fromJson(response, HashMap.class).get("access_token").toString();
-                                return new TokenWithAssignment(token, studentClassAssignmentId);
+                                System.out.println("[TOKEN] Created token for student: " + record.get("username"));
+                                
+                                // Fetch student due assignments
+                                System.out.println("[ASSIGNMENT] Fetching assignments for student: " + record.get("username"));
+                                String assignmentResponse = getStudentDueAssignment(token, "MULTIPLE_USER_VERIFICATION");
+                                Map<String, String> assignmentDetails = extractAssignmentDetails(assignmentResponse);
+                                
+                                if (assignmentDetails != null) {
+                                    // Get values from API response
+                                    String apiStudentClassAssignmentId = assignmentDetails.get("studentClassAssignmentId");
+                                    String classAssignmentId = assignmentDetails.get("classAssignmentId");
+                                    String classId = assignmentDetails.get("classId");
+                                    
+                                    // Use CSV studentClassAssignmentId if it exists, otherwise use API value
+                                    String finalStudentClassAssignmentId;
+                                    if (csvStudentClassAssignmentId != null && !csvStudentClassAssignmentId.trim().isEmpty()) {
+                                        finalStudentClassAssignmentId = csvStudentClassAssignmentId;
+                                        System.out.println("[ASSIGNMENT] Using CSV studentClassAssignmentId: " + finalStudentClassAssignmentId);
+                                    } else {
+                                        finalStudentClassAssignmentId = apiStudentClassAssignmentId;
+                                        System.out.println("[ASSIGNMENT] Using API studentClassAssignmentId: " + finalStudentClassAssignmentId);
+                                    }
+                                    
+                                    System.out.println("[ASSIGNMENT] Final assignment details - " +
+                                                       "studentClassAssignmentId: " + finalStudentClassAssignmentId +
+                                                       ", classAssignmentId: " + classAssignmentId +
+                                                       ", classId: " + classId);
+                                    
+                                    return new TokenWithAssignment(token, finalStudentClassAssignmentId, classAssignmentId, classId);
+                                } else {
+                                    // Fallback to CSV studentClassAssignmentId if API call fails
+                                    if (csvStudentClassAssignmentId != null && !csvStudentClassAssignmentId.trim().isEmpty()) {
+                                        System.out.println("[ASSIGNMENT] API call failed, using CSV studentClassAssignmentId: " + csvStudentClassAssignmentId);
+                                        return new TokenWithAssignment(token, csvStudentClassAssignmentId);
+                                    } else {
+                                        System.out.println("[ASSIGNMENT] API call failed and no CSV studentClassAssignmentId available");
+                                        return null;
+                                    }
+                                }
                             } catch (Exception e) {
                                 System.out.println("Failed to extract token from response: " + e.getMessage());
                                 return null;
