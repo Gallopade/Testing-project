@@ -182,91 +182,77 @@ class ApiTesting {
     }
 
     public void sendRequests(List<TokenWithAssignment> tokenWithAssignments) {
-        int requestsPerStudent = 1000;
+        int requestsPerStudent = 2000; // Send 2000 requests per student
         int totalQuestions = 21;
-        int minRequestsPerQuestion = 2; // Each question sent at least 10 times
         int totalStudents = tokenWithAssignments.size();
         int totalRequests = requestsPerStudent * totalStudents;
         
         System.out.println("========================================");
-        System.out.println("Starting request sending process:");
+        System.out.println("Starting PARALLEL request sending process:");
         System.out.println("Total students: " + totalStudents);
         System.out.println("Requests per student: " + requestsPerStudent);
-        System.out.println("Total questions: " + totalQuestions);
-        System.out.println("Minimum requests per question: " + minRequestsPerQuestion);
+        System.out.println("Total questions: " + totalQuestions + " (will cycle through)");
         System.out.println("Total requests to send: " + totalRequests);
+        System.out.println("Mode: MAXIMUM PARALLELISM - All requests sent simultaneously");
         System.out.println("========================================");
         
+        long startTime = System.currentTimeMillis();
         final int[] completedStudents = {0};
         
         tokenWithAssignments.stream().parallel()
                 .forEach(ta -> {
                     String studentId = ta.getStudentClassAssignmentId();
-                    System.out.println("[Student " + (completedStudents[0] + 1) + "/" + totalStudents + "] Starting " + requestsPerStudent + " requests for student with assignmentId: " + studentId);
+                    long studentStartTime = System.currentTimeMillis();
+                    System.out.println("[Student " + (completedStudents[0] + 1) + "/" + totalStudents + "] Starting " + requestsPerStudent + " PARALLEL requests for student: " + studentId);
                     
-                    // First, send each question at least minRequestsPerQuestion times
-                    IntStream.range(1, totalQuestions + 1).parallel()
-                            .forEach(questionNumber -> {
+                    // Send all 2000 requests in parallel, cycling through questions 1-21
+                    IntStream.range(0, requestsPerStudent).parallel()
+                            .mapToObj(i -> {
+                                // Cycle through questions 1-21
+                                int questionNumber = (i % totalQuestions) + 1;
                                 String questionNumberStr = String.valueOf(questionNumber);
                                 String url = baseUrl + "gradebook-command-service/api/v1/saveStudentClassAssignmentAnswer";
                                 
-                                for (int j = 0; j < minRequestsPerQuestion; j++) {
-                                    System.out.println("[REQUEST] Student: " + studentId + " | Question: " + questionNumber + " | Request #" + (j + 1) + "/" + minRequestsPerQuestion + " (min) | URL: " + url);
-                                    
-                                    HttpEntity<?> entity = this.saveStudentClassAssignment(ta.getToken(), ta.getStudentClassAssignmentId(), questionNumberStr);
-                                    String response = this.sendRequest(url, entity, HttpMethod.POST);
-                                    
-                                    if (response != null && !response.isEmpty()) {
-                                        try {
-                                            HashMap<?, ?> jsonResponse = gson.fromJson(response, HashMap.class);
-                                            Object message = jsonResponse.get("message");
-                                            System.out.println("[RESPONSE] Student: " + studentId + " | Question: " + questionNumber + " | Request #" + (j + 1) + " | Response: " + (message != null ? message : "Success"));
-                                        } catch (Exception e) {
-                                            System.out.println("[RESPONSE] Student: " + studentId + " | Question: " + questionNumber + " | Request #" + (j + 1) + " | Response received");
-                                        }
+                                HttpEntity<?> entity = this.saveStudentClassAssignment(ta.getToken(), ta.getStudentClassAssignmentId(), questionNumberStr);
+                                
+                                // Send request immediately without any delays
+                                String response = this.sendRequest(url, entity, HttpMethod.POST);
+                                
+                                return response;
+                            })
+                            .forEach(response -> {
+                                if (response != null && !response.isEmpty()) {
+                                    try {
+                                        HashMap<?, ?> jsonResponse = gson.fromJson(response, HashMap.class);
+                                        Object message = jsonResponse.get("message");
+                                        System.out.println("[RESPONSE] Student: " + studentId + " | Response: " + (message != null ? message : response));
+                                    } catch (Exception e) {
+                                        System.out.println("[RESPONSE] Student: " + studentId + " | Response: " + response);
                                     }
+                                } else {
+                                    System.out.println("[RESPONSE] Student: " + studentId + " | Empty response");
                                 }
                             });
                     
-                    // Then, send remaining requests cycling through questions
-                    int remainingRequests = requestsPerStudent - (totalQuestions * minRequestsPerQuestion);
-                    if (remainingRequests > 0) {
-                        System.out.println("[Student " + studentId + "] Sending remaining " + remainingRequests + " requests (cycling through questions)");
-                        
-                        IntStream.range(0, remainingRequests).parallel()
-                                .mapToObj(i -> {
-                                    int questionNumber = (i % totalQuestions) + 1;
-                                    String questionNumberStr = String.valueOf(questionNumber);
-                                    String url = baseUrl + "gradebook-command-service/api/v1/saveStudentClassAssignmentAnswer";
-                                    
-                                    int requestNum = (totalQuestions * minRequestsPerQuestion) + i + 1;
-                                    System.out.println("[REQUEST] Student: " + studentId + " | Question: " + questionNumber + " | Request #" + requestNum + "/" + requestsPerStudent + " | URL: " + url);
-                                    
-                                    HttpEntity<?> entity = this.saveStudentClassAssignment(ta.getToken(), ta.getStudentClassAssignmentId(), questionNumberStr);
-                                    String response = this.sendRequest(url, entity, HttpMethod.POST);
-                                    
-                                    if (i % 100 == 0 && i > 0) {
-                                        System.out.println("[PROGRESS] [Student " + studentId + "] Progress: " + requestNum + "/" + requestsPerStudent + " requests sent (current question: " + questionNumber + ")");
-                                    }
-                                    
-                                    return response;
-                                })
-                                .forEach(s -> {
-                                    // Response already logged above
-                                });
-                    }
+                    long studentEndTime = System.currentTimeMillis();
+                    long studentDuration = studentEndTime - studentStartTime;
                     
                     synchronized (completedStudents) {
                         completedStudents[0]++;
-                        System.out.println("[Student " + completedStudents[0] + "/" + totalStudents + "] Completed " + requestsPerStudent + " requests for student: " + studentId);
+                        System.out.println("[Student " + completedStudents[0] + "/" + totalStudents + "] Completed " + requestsPerStudent + " parallel requests for student: " + studentId + " in " + studentDuration + "ms");
                     }
                 });
         
+        long endTime = System.currentTimeMillis();
+        long totalDuration = endTime - startTime;
+        double requestsPerSecond = (totalRequests * 1000.0) / totalDuration;
+        
         System.out.println("========================================");
-        System.out.println("All requests completed!");
+        System.out.println("All parallel requests completed!");
         System.out.println("Total students processed: " + totalStudents);
         System.out.println("Total requests sent: " + totalRequests + " (" + requestsPerStudent + " requests × " + totalStudents + " students)");
-        System.out.println("Each question sent at least " + minRequestsPerQuestion + " times per student");
+        System.out.println("Total time: " + totalDuration + "ms (" + (totalDuration / 1000.0) + " seconds)");
+        System.out.println("Average throughput: " + String.format("%.2f", requestsPerSecond) + " requests/second");
         System.out.println("========================================");
     }
 
