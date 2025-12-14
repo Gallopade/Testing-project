@@ -30,7 +30,7 @@ import java.util.stream.IntStream;
 @Service
 class ApiTesting {
     private Gson gson = new Gson();
-    private String baseUrl = "https://staging.gallopade.com/";
+    private String baseUrl = "http://localhost:9000/";
     private String csvFile = "student-account.csv";
     private void disableCertificateValidation() throws NoSuchAlgorithmException, KeyManagementException {
         TrustManager[] trustAllCerts = new TrustManager[]{
