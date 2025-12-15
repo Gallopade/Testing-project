@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
@@ -60,18 +61,40 @@ class ApiTesting {
 
     private String sendRequest(String url, HttpEntity<?> entity, HttpMethod method) {
         try {
+            // URL encode the query parameters properly
             URI uri = new URL(url).toURI();
             RestTemplate restTemplate = new RestTemplate();
-            String response = restTemplate.exchange(uri, method, entity, String.class).getBody();
-            System.out.println("[REQUEST] " + method + " " + url + " - Response length: " + (response != null ? response.length() : 0));
+            
+            System.out.println("[REQUEST] Sending " + method + " request to: " + url);
+            System.out.println("[REQUEST] Headers: " + (entity.getHeaders() != null ? entity.getHeaders().toString() : "null"));
+            
+            org.springframework.http.ResponseEntity<String> responseEntity = restTemplate.exchange(uri, method, entity, String.class);
+            
+            int statusCode = responseEntity.getStatusCode().value();
+            String response = responseEntity.getBody();
+
+            System.out.println("[REQUEST] Status Code: " + statusCode);
+            System.out.println("[REQUEST] Response length: " + (response != null ? response.length() : 0));
+            
+            if (statusCode >= 400) {
+                System.out.println("[REQUEST ERROR] HTTP Error " + statusCode + " - Response: " + response);
+                return null;
+            }
+            
+            if (response == null || response.isEmpty()) {
+                System.out.println("[REQUEST WARNING] Empty response received");
+            }
+            
             return response;
         } catch (Exception e) {
             System.out.println("[REQUEST ERROR] " + method + " " + url);
             System.out.println("[REQUEST ERROR] Exception: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+            System.out.println("[REQUEST ERROR] Stack trace:");
+            e.printStackTrace();
             System.out.println("[REQUEST ERROR] Entity: " + entity);
         }
 
-        return "";
+        return null;
     }
 
     private HttpHeaders setHeaders(String authorization, String contentType, String accept) {
@@ -134,28 +157,60 @@ class ApiTesting {
      * @return The assignment response as a String
      */
     private String getStudentDueAssignment(String token, String searchString) {
-        String url = baseUrl + "gradebook-query-dashboard-service/api/v2/getStudentDueAssignment" +
-                     "?shouldQuery=true&searchString=" + searchString;
-        
-        HttpHeaders headers = setHeaders("Bearer " + token, "application/json", "*/*");
-        HttpEntity<?> entity = new HttpEntity<>(headers);
-        
-        String response = sendRequest(url, entity, HttpMethod.GET);
-        
-        // Print the full response
-        System.out.println("========================================");
-        System.out.println("[ASSIGNMENT RESPONSE] getStudentDueAssignment Response:");
-        System.out.println("URL: " + url);
-        System.out.println("Search String: " + searchString);
-        System.out.println("Response:");
-        if (response != null && !response.isEmpty()) {
-            System.out.println(response);
-        } else {
-            System.out.println("(Empty or null response)");
+        try {
+            // Use UriComponentsBuilder for proper URL encoding - matching the working curl command
+            // Note: shouldQuery is NOT in the working curl, so we remove it
+            String url = UriComponentsBuilder.fromHttpUrl(baseUrl + "gradebook-query-dashboard-service/api/v2/getStudentDueAssignment")
+                    .queryParam("searchString", searchString)
+                    .queryParam("filter", "OPEN")
+                    .queryParam("page", "1")
+                    .queryParam("size", "50")
+                    .toUriString();
+            
+            System.out.println("[ASSIGNMENT] Request URL: " + url);
+            System.out.println("[ASSIGNMENT] Token (first 50 chars): " + (token != null && token.length() > 50 ? token.substring(0, 50) + "..." : token));
+            
+            // Match the exact headers from the working curl command
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Authorization", "Bearer " + token);
+            headers.set("Accept", "application/json, text/plain, */*");
+            headers.set("Accept-Language", "en-US,en;q=0.9");
+            headers.set("Timezone", "Asia/Karachi");
+            headers.set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36");
+            
+            HttpEntity<?> entity = new HttpEntity<>(headers);
+            
+            System.out.println("[ASSIGNMENT] Request Headers:");
+            headers.forEach((key, values) -> {
+                if (key.equalsIgnoreCase("Authorization")) {
+                    System.out.println("  " + key + ": Bearer " + (values.get(0).length() > 50 ? values.get(0).substring(0, 50) + "..." : values.get(0)));
+                } else {
+                    System.out.println("  " + key + ": " + values);
+                }
+            });
+            
+            String response = sendRequest(url, entity, HttpMethod.GET);
+            
+            // Print the full response
+            System.out.println("========================================");
+            System.out.println("[ASSIGNMENT RESPONSE] getStudentDueAssignment Response:");
+            System.out.println("URL: " + url);
+            System.out.println("Search String: " + searchString);
+            System.out.println("Response:");
+            if (response != null && !response.isEmpty()) {
+                System.out.println(response);
+            } else {
+                System.out.println("(Empty or null response)");
+                System.out.println("[ASSIGNMENT ERROR] No response received - check URL, token, and network connectivity");
+            }
+            System.out.println("========================================");
+            
+            return response;
+        } catch (Exception e) {
+            System.out.println("[ASSIGNMENT ERROR] Exception in getStudentDueAssignment: " + e.getMessage());
+            e.printStackTrace();
+            return null;
         }
-        System.out.println("========================================");
-        
-        return response;
     }
 
     /**
